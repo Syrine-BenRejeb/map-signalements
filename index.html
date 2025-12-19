@@ -13,7 +13,7 @@
     html, body { height: 100%; margin: 0; padding: 0; background:#f3f4f6; }
     #map { height: 100vh; width: 100vw; }
 
-    /* Bottom details card (inside the Web page) */
+    /* Bottom details card */
     #card {
       position: fixed;
       left: 12px;
@@ -58,7 +58,7 @@
     }
     #cardImg {
       width: 100%;
-      height: 140px;
+      height: 150px;
       object-fit: cover;
       background: #e5e7eb;
       display:none;
@@ -73,9 +73,7 @@
     }
     #statusText { font-weight: 700; }
     #dateText { opacity: .9; }
-    #cardActions {
-      padding: 0 12px 12px 12px;
-    }
+    #cardActions { padding: 0 12px 12px 12px; }
     #detailsBtn {
       width: 100%;
       border: none;
@@ -88,19 +86,20 @@
       cursor:pointer;
     }
 
-    /* Popup button styling */
+    /* Make Leaflet default marker always clickable in WebView */
+    .leaflet-marker-icon, .leaflet-marker-shadow {
+      pointer-events: auto !important;
+    }
+
+    /* Popup button style */
     .popupBtn {
-      display:block;
-      width:100%;
-      border:none;
-      border-radius:10px;
-      background:#065f46;
-      color:white;
-      padding:10px 12px;
-      margin-top:10px;
-      font-weight:800;
+      display:inline-block;
+      border: 1px solid #d1d5db;
+      background: #fff;
+      border-radius: 8px;
+      padding: 6px 10px;
       cursor:pointer;
-      text-align:center;
+      font-weight: 700;
     }
     .popupTitle { font-weight:800; margin:0 0 6px 0; }
     .popupLine { margin:0; font-size:13px; opacity:.9; }
@@ -110,7 +109,7 @@
 <body>
   <div id="map"></div>
 
-  <!-- Details card (shows when you click a point) -->
+  <!-- Bottom card -->
   <div id="card">
     <div id="cardTop">
       <h3 id="cardTitle">—</h3>
@@ -126,13 +125,13 @@
     </div>
   </div>
 
-  <!-- Firebase (Web SDK v9) -->
+  <!-- Firebase v9 -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
     import { getFirestore, collection, getDocs } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
 
     /**********************
-     * 1) PUT YOUR CONFIG
+     * 1) METS TON firebaseConfig
      **********************/
     const firebaseConfig = {
   apiKey: "AIzaSyAaPvnFtMPUKEy9TXfy9sw9ollnxm820m8",
@@ -145,7 +144,7 @@
 
 
     /**********************
-     * 2) Helpers (coords)
+     * 2) Helpers coords Tunisie
      **********************/
     function parseCoord(v) {
       if (v === null || v === undefined) return null;
@@ -156,28 +155,20 @@
       }
       return null;
     }
-
     function inTunisia(lat, lng) {
-      // Tunisie bbox (avoid sea/Africa)
       return lat >= 30.0 && lat <= 37.6 && lng >= 7.0 && lng <= 12.5;
     }
-
     function normalizeLatLng(latRaw, lngRaw) {
       let lat = parseCoord(latRaw);
       let lng = parseCoord(lngRaw);
       if (lat === null || lng === null) return null;
 
-      // Very common: inverted coords (lat ~ 10, lng ~ 36)
-      if (Math.abs(lat) < 20 && Math.abs(lng) > 20) {
-        [lat, lng] = [lng, lat];
-      }
+      // inversion auto (cas fréquent)
+      if (Math.abs(lat) < 20 && Math.abs(lng) > 20) [lat, lng] = [lng, lat];
 
-      // If still not in Tunisia, ignore (so no points in sea)
       if (!inTunisia(lat, lng)) return null;
-
       return { lat, lng };
     }
-
     function formatDate(ts) {
       try {
         const d = ts?.toDate ? ts.toDate() : (ts instanceof Date ? ts : null);
@@ -186,34 +177,25 @@
         const mm = String(d.getMonth() + 1).padStart(2, "0");
         const yyyy = d.getFullYear();
         return `${dd}/${mm}/${yyyy}`;
-      } catch {
-        return "—";
-      }
+      } catch { return "—"; }
     }
-
     function escapeHtml(s) {
       return String(s ?? "")
-        .replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;")
-        .replaceAll('"', "&quot;")
-        .replaceAll("'", "&#039;");
+        .replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;").replaceAll("'", "&#039;");
     }
 
     /**********************
-     * 3) Leaflet map
+     * 3) Map
      **********************/
     const map = L.map("map", { tap: false, zoomControl: true });
-
-    // Always start centered on Tunis
-    map.setView([36.8065, 10.1815], 6);
+    map.setView([36.8065, 10.1815], 12); // Tunis
 
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      maxZoom: 19,
-      attribution: "&copy; OpenStreetMap"
+      maxZoom: 19, attribution: "&copy; OpenStreetMap"
     }).addTo(map);
 
-    // WebView resize bug fix (points appear only after zoom)
+    // Fix “points appear only after zoom” (WebView)
     function hardInvalidate() {
       let tries = 0;
       const t = setInterval(() => {
@@ -229,7 +211,7 @@
     });
 
     /**********************
-     * 4) Card logic
+     * 4) Bottom card logic
      **********************/
     const card = document.getElementById("card");
     const cardTitle = document.getElementById("cardTitle");
@@ -243,7 +225,6 @@
 
     function openCard(data) {
       selectedId = data.id;
-
       cardTitle.textContent = data.title || "Sans titre";
       statusText.textContent = data.status || "—";
       dateText.textContent = formatDate(data.createdAt);
@@ -257,22 +238,19 @@
 
       card.style.display = "block";
     }
-
     function closeCard() {
       card.style.display = "none";
       selectedId = null;
     }
-
     closeBtn.addEventListener("click", closeCard);
 
-    // Deep link to FlutterFlow detail page
     detailsBtn.addEventListener("click", () => {
       if (!selectedId) return;
       window.location.href = `ff://signalement?id=${encodeURIComponent(selectedId)}`;
     });
 
     /**********************
-     * 5) Firestore load + markers
+     * 5) Firestore + markers (PIN BLEU)
      **********************/
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
@@ -286,7 +264,6 @@
         const d = doc.data();
         const id = doc.id;
 
-        // ✅ normalize coords (fix sea)
         const coord = normalizeLatLng(d.latitude, d.longitude);
         if (!coord) return;
 
@@ -300,34 +277,31 @@
           lng: coord.lng
         };
 
-        // ✅ circleMarker (clickable in FlutterFlow WebView)
-        const m = L.circleMarker([data.lat, data.lng], {
-          radius: 8,
-          weight: 2,
-          color: "#b91c1c",
-          fillColor: "#ef4444",
-          fillOpacity: 0.95
+        // ✅ Pin bleu Leaflet
+        const m = L.marker([data.lat, data.lng], {
+          // interactive true by default, keep it explicit
+          interactive: true
         }).addTo(map);
 
-        // ✅ click marker: show card + center
+        // ✅ Click pin => open bottom card + center map
         m.on("click", () => {
           openCard(data);
-          map.setView([data.lat, data.lng], Math.max(map.getZoom(), 15), { animate: true });
+          map.setView([data.lat, data.lng], Math.max(map.getZoom(), 16), { animate: true });
           hardInvalidate();
         });
 
-        // ✅ popup with button (optional)
+        // ✅ Popup like your screenshot
         const popupHtml = `
-          <div style="min-width:220px;">
+          <div style="min-width:220px">
             <p class="popupTitle">${escapeHtml(data.title || "Sans titre")}</p>
-            <p class="popupLine">Statut: ${escapeHtml(data.status || "—")}</p>
-            <p class="popupLine">Date: ${escapeHtml(formatDate(data.createdAt))}</p>
+            <p class="popupLine">Statut : ${escapeHtml(data.status || "—")}</p>
+            <p class="popupLine">Date : ${escapeHtml(formatDate(data.createdAt))}</p>
             <button class="popupBtn" data-id="${escapeHtml(id)}">Voir détails</button>
           </div>
         `;
-        m.bindPopup(popupHtml);
+        m.bindPopup(popupHtml, { closeButton: true });
 
-        // When popup opens, attach click to the button
+        // Click on popup button => deep link
         m.on("popupopen", (e) => {
           const el = e.popup.getElement();
           if (!el) return;
@@ -341,12 +315,12 @@
         markers.push(m);
       });
 
-      // ✅ Show points immediately (no zoom needed)
+      // ✅ show all points immediately
       if (markers.length > 0) {
         const group = L.featureGroup(markers);
         map.fitBounds(group.getBounds().pad(0.2));
       } else {
-        map.setView([36.8065, 10.1815], 6);
+        map.setView([36.8065, 10.1815], 12);
       }
 
       hardInvalidate();
