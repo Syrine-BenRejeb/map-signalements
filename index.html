@@ -2,124 +2,127 @@
 <html lang="fr">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1" />
   <title>Carte des signalements</title>
 
   <!-- Leaflet -->
-  <link
-    rel="stylesheet"
-    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-  />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
   <style>
-    html, body {
-      height: 100%;
-      margin: 0;
-      padding: 0;
-      background: #f3f4f6;
-    }
-    #map {
-      height: 100vh;        /* IMPORTANT: full height */
-      width: 100vw;
-    }
+    html, body { height: 100%; margin: 0; padding: 0; background:#f3f4f6; }
+    #map { height: 100vh; width: 100vw; }
 
-    /* Bottom card */
+    /* Bottom details card (inside the Web page) */
     #card {
       position: fixed;
       left: 12px;
       right: 12px;
       bottom: 12px;
+      z-index: 9999;
       background: #fff;
       border-radius: 16px;
       box-shadow: 0 10px 30px rgba(0,0,0,.18);
       overflow: hidden;
-      display: none;        /* hidden until click */
-      z-index: 9999;
+      display: none;
       font-family: Arial, sans-serif;
     }
-
-    #cardHeader {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 12px 12px 8px 12px;
+    #cardTop {
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
       gap: 12px;
+      padding: 12px;
     }
     #cardTitle {
-      font-size: 18px;
+      margin:0;
+      font-size: 16px;
       font-weight: 700;
-      margin: 0;
+      color:#111827;
       line-height: 1.2;
-      color: #111827;
-      flex: 1;
-      min-width: 0;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
+      flex:1;
+      min-width:0;
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
     }
     #closeBtn {
-      width: 44px;
-      height: 44px;
-      border-radius: 12px;
+      width: 42px; height: 42px;
       border: none;
+      border-radius: 12px;
       background: #16a34a;
-      color: white;
+      color: #fff;
       font-size: 20px;
       cursor: pointer;
+      flex:0 0 auto;
     }
-
-    #cardImage {
+    #cardImg {
       width: 100%;
-      height: 150px;
+      height: 140px;
       object-fit: cover;
       background: #e5e7eb;
-      display: none;
+      display:none;
     }
-
     #cardMeta {
-      display: flex;
-      justify-content: space-between;
-      padding: 10px 12px;
+      display:flex;
+      justify-content:space-between;
+      padding: 10px 12px 12px 12px;
       font-size: 14px;
-      color: #111827;
+      color:#111827;
+      gap: 12px;
     }
-    #statusText { color: #111827; }
-    #dateText { color: #111827; }
-
-    #cardFooter {
+    #statusText { font-weight: 700; }
+    #dateText { opacity: .9; }
+    #cardActions {
       padding: 0 12px 12px 12px;
     }
     #detailsBtn {
       width: 100%;
-      padding: 12px 14px;
       border: none;
       border-radius: 12px;
       background: #065f46;
-      color: white;
-      font-weight: 700;
-      font-size: 16px;
-      cursor: pointer;
+      color: #fff;
+      font-weight: 800;
+      font-size: 15px;
+      padding: 12px 14px;
+      cursor:pointer;
     }
+
+    /* Popup button styling */
+    .popupBtn {
+      display:block;
+      width:100%;
+      border:none;
+      border-radius:10px;
+      background:#065f46;
+      color:white;
+      padding:10px 12px;
+      margin-top:10px;
+      font-weight:800;
+      cursor:pointer;
+      text-align:center;
+    }
+    .popupTitle { font-weight:800; margin:0 0 6px 0; }
+    .popupLine { margin:0; font-size:13px; opacity:.9; }
   </style>
 </head>
 
 <body>
   <div id="map"></div>
 
-  <!-- Bottom card -->
+  <!-- Details card (shows when you click a point) -->
   <div id="card">
-    <div id="cardHeader">
+    <div id="cardTop">
       <h3 id="cardTitle">—</h3>
-      <button id="closeBtn">×</button>
+      <button id="closeBtn" type="button">×</button>
     </div>
-    <img id="cardImage" alt="image signalement" />
+    <img id="cardImg" alt="Image du signalement" />
     <div id="cardMeta">
       <div id="statusText">—</div>
       <div id="dateText">—</div>
     </div>
-    <div id="cardFooter">
-      <button id="detailsBtn">Voir détails</button>
+    <div id="cardActions">
+      <button id="detailsBtn" type="button">Voir détails</button>
     </div>
   </div>
 
@@ -128,7 +131,9 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
     import { getFirestore, collection, getDocs } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
 
-    // ✅ 1) Mets TON firebaseConfig ici
+    /**********************
+     * 1) PUT YOUR CONFIG
+     **********************/
     const firebaseConfig = {
   apiKey: "AIzaSyAaPvnFtMPUKEy9TXfy9sw9ollnxm820m8",
   authDomain: "smartcity-f2401.firebaseapp.com",
@@ -138,26 +143,43 @@
   appId: "1:113851035276:web:1535cc7a244369ebedd5a9"
 };
 
-    // -------- Helpers --------
+
+    /**********************
+     * 2) Helpers (coords)
+     **********************/
     function parseCoord(v) {
       if (v === null || v === undefined) return null;
       if (typeof v === "number") return v;
       if (typeof v === "string") {
-        const cleaned = v.trim().replace(",", ".");
-        const n = Number(cleaned);
+        const n = Number(v.trim().replace(",", "."));
         return Number.isFinite(n) ? n : null;
       }
       return null;
     }
 
     function inTunisia(lat, lng) {
-      // Box simple Tunisie (assez strict pour éviter mer/Afrique)
+      // Tunisie bbox (avoid sea/Africa)
       return lat >= 30.0 && lat <= 37.6 && lng >= 7.0 && lng <= 12.5;
+    }
+
+    function normalizeLatLng(latRaw, lngRaw) {
+      let lat = parseCoord(latRaw);
+      let lng = parseCoord(lngRaw);
+      if (lat === null || lng === null) return null;
+
+      // Very common: inverted coords (lat ~ 10, lng ~ 36)
+      if (Math.abs(lat) < 20 && Math.abs(lng) > 20) {
+        [lat, lng] = [lng, lat];
+      }
+
+      // If still not in Tunisia, ignore (so no points in sea)
+      if (!inTunisia(lat, lng)) return null;
+
+      return { lat, lng };
     }
 
     function formatDate(ts) {
       try {
-        // Firestore Timestamp -> ts.toDate()
         const d = ts?.toDate ? ts.toDate() : (ts instanceof Date ? ts : null);
         if (!d) return "—";
         const dd = String(d.getDate()).padStart(2, "0");
@@ -169,10 +191,21 @@
       }
     }
 
-    // ✅ 2) Init map (tap:false important WebView)
+    function escapeHtml(s) {
+      return String(s ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    /**********************
+     * 3) Leaflet map
+     **********************/
     const map = L.map("map", { tap: false, zoomControl: true });
 
-    // Base center Tunis
+    // Always start centered on Tunis
     map.setView([36.8065, 10.1815], 6);
 
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
@@ -180,23 +213,27 @@
       attribution: "&copy; OpenStreetMap"
     }).addTo(map);
 
-    // ✅ 3) Fix “points appear only after zoom”
-    //    -> invalidateSize plusieurs fois (WebView timing)
-    function forceResizeFix() {
-      requestAnimationFrame(() => map.invalidateSize(true));
-      setTimeout(() => map.invalidateSize(true), 200);
-      setTimeout(() => map.invalidateSize(true), 600);
-      setTimeout(() => map.invalidateSize(true), 1200);
+    // WebView resize bug fix (points appear only after zoom)
+    function hardInvalidate() {
+      let tries = 0;
+      const t = setInterval(() => {
+        tries++;
+        map.invalidateSize(true);
+        const s = map.getSize();
+        if ((s.x > 80 && s.y > 80) || tries >= 20) clearInterval(t);
+      }, 150);
     }
-    window.addEventListener("load", forceResizeFix);
+    window.addEventListener("load", hardInvalidate);
     document.addEventListener("visibilitychange", () => {
-      if (!document.hidden) forceResizeFix();
+      if (!document.hidden) hardInvalidate();
     });
 
-    // Bottom card elements
+    /**********************
+     * 4) Card logic
+     **********************/
     const card = document.getElementById("card");
     const cardTitle = document.getElementById("cardTitle");
-    const cardImage = document.getElementById("cardImage");
+    const cardImg = document.getElementById("cardImg");
     const statusText = document.getElementById("statusText");
     const dateText = document.getElementById("dateText");
     const closeBtn = document.getElementById("closeBtn");
@@ -212,10 +249,10 @@
       dateText.textContent = formatDate(data.createdAt);
 
       if (data.imageUrl) {
-        cardImage.src = data.imageUrl;
-        cardImage.style.display = "block";
+        cardImg.src = data.imageUrl;
+        cardImg.style.display = "block";
       } else {
-        cardImage.style.display = "none";
+        cardImg.style.display = "none";
       }
 
       card.style.display = "block";
@@ -228,13 +265,15 @@
 
     closeBtn.addEventListener("click", closeCard);
 
+    // Deep link to FlutterFlow detail page
     detailsBtn.addEventListener("click", () => {
       if (!selectedId) return;
-      // ✅ Deep link FlutterFlow
       window.location.href = `ff://signalement?id=${encodeURIComponent(selectedId)}`;
     });
 
-    // ✅ 4) Load Firestore and render circleMarkers (always clickable)
+    /**********************
+     * 5) Firestore load + markers
+     **********************/
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
 
@@ -243,22 +282,13 @@
     async function loadSignalements() {
       const snap = await getDocs(collection(db, "signalements"));
 
-      snap.forEach(doc => {
+      snap.forEach((doc) => {
         const d = doc.data();
         const id = doc.id;
 
-        let lat = parseCoord(d.latitude);
-        let lng = parseCoord(d.longitude);
-
-        if (lat === null || lng === null) return;
-
-        // ✅ inversion auto si besoin (ex: lat=10.xx lng=36.xx)
-        if (Math.abs(lat) < 20 && Math.abs(lng) > 20) {
-          const tmp = lat; lat = lng; lng = tmp;
-        }
-
-        // ✅ filtre Tunisie
-        if (!inTunisia(lat, lng)) return;
+        // ✅ normalize coords (fix sea)
+        const coord = normalizeLatLng(d.latitude, d.longitude);
+        if (!coord) return;
 
         const data = {
           id,
@@ -266,11 +296,12 @@
           status: d.status || "",
           createdAt: d.createdAt,
           imageUrl: d.imageUrl || "",
-          lat,
-          lng
+          lat: coord.lat,
+          lng: coord.lng
         };
 
-        const m = L.circleMarker([lat, lng], {
+        // ✅ circleMarker (clickable in FlutterFlow WebView)
+        const m = L.circleMarker([data.lat, data.lng], {
           radius: 8,
           weight: 2,
           color: "#b91c1c",
@@ -278,17 +309,39 @@
           fillOpacity: 0.95
         }).addTo(map);
 
-        // ✅ click marker -> open card + center map
+        // ✅ click marker: show card + center
         m.on("click", () => {
           openCard(data);
-          map.setView([lat, lng], Math.max(map.getZoom(), 15), { animate: true });
-          forceResizeFix(); // garde cliquable même si WebView bouge
+          map.setView([data.lat, data.lng], Math.max(map.getZoom(), 15), { animate: true });
+          hardInvalidate();
+        });
+
+        // ✅ popup with button (optional)
+        const popupHtml = `
+          <div style="min-width:220px;">
+            <p class="popupTitle">${escapeHtml(data.title || "Sans titre")}</p>
+            <p class="popupLine">Statut: ${escapeHtml(data.status || "—")}</p>
+            <p class="popupLine">Date: ${escapeHtml(formatDate(data.createdAt))}</p>
+            <button class="popupBtn" data-id="${escapeHtml(id)}">Voir détails</button>
+          </div>
+        `;
+        m.bindPopup(popupHtml);
+
+        // When popup opens, attach click to the button
+        m.on("popupopen", (e) => {
+          const el = e.popup.getElement();
+          if (!el) return;
+          const btn = el.querySelector(".popupBtn");
+          if (!btn) return;
+          btn.addEventListener("click", () => {
+            window.location.href = `ff://signalement?id=${encodeURIComponent(id)}`;
+          });
         });
 
         markers.push(m);
       });
 
-      // ✅ Fit bounds to show points immediately (no zoom needed)
+      // ✅ Show points immediately (no zoom needed)
       if (markers.length > 0) {
         const group = L.featureGroup(markers);
         map.fitBounds(group.getBounds().pad(0.2));
@@ -296,7 +349,7 @@
         map.setView([36.8065, 10.1815], 6);
       }
 
-      forceResizeFix(); // encore une fois après ajout markers
+      hardInvalidate();
     }
 
     loadSignalements();
