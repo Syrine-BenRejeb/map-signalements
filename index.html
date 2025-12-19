@@ -8,25 +8,6 @@
   <style>
     html, body { height: 100%; margin: 0; }
     #map { height: 100vh; width: 100vw; }
-
-    /* IMPORTANT: rendre l’icône interactive */
-    .leaflet-marker-icon,
-    .leaflet-interactive {
-      pointer-events: auto !important;
-      cursor: pointer;
-    }
-
-    /* Notre point rouge */
-    .marker-red {
-      background: #e11d48;
-      width: 22px;              /* plus grand = plus facile à cliquer */
-      height: 22px;
-      border-radius: 50%;
-      border: 3px solid white;
-      box-shadow: 0 0 10px rgba(0,0,0,.45);
-      pointer-events: auto !important;
-    }
-
     .popup-title { font-weight: 700; margin-bottom: 6px; }
     .popup-line { margin: 2px 0; }
     .popup-btn {
@@ -61,13 +42,13 @@
   appId: "1:113851035276:web:1535cc7a244369ebedd5a9"
 };
 
-
     const ONLY_TUNISIA = true;
 
+    // --- Firebase
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
 
-    // ✅ IMPORTANT WebView: tap:false pour éviter bug clic
+    // --- Leaflet (important: tap:false dans WebView)
     const map = L.map("map", { tap: false }).setView([36.8065, 10.1815], 12);
 
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
@@ -75,25 +56,30 @@
       attribution: "&copy; OpenStreetMap contributors"
     }).addTo(map);
 
+    // ✅ FIX 1: force Leaflet à recalculer la taille (sinon markers apparaissent après zoom)
+    function fixSize() { map.invalidateSize(true); }
+    setTimeout(fixSize, 50);
+    setTimeout(fixSize, 300);
+    window.addEventListener("resize", () => setTimeout(fixSize, 50));
+
+    // --- Helpers
     function toNumber(v) {
       const n = Number(String(v ?? "").trim().replace(",", "."));
       return Number.isFinite(n) ? n : null;
     }
-
     function isValidLatLng(lat, lng) {
       return lat !== null && lng !== null && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
     }
-
     function isInTunisia(lat, lng) {
       return lat >= 30 && lat <= 38.5 && lng >= 7 && lng <= 12.5;
     }
-
     function normalizeLatLng(a, b) {
       const lat1 = toNumber(a);
       const lng1 = toNumber(b);
       if (lat1 === null || lng1 === null) return null;
 
       if (isValidLatLng(lat1, lng1)) {
+        // si hors Tunisie, tente swap
         if (!isInTunisia(lat1, lng1)) {
           const lat2 = lng1, lng2 = lat1;
           if (isValidLatLng(lat2, lng2) && isInTunisia(lat2, lng2)) return { lat: lat2, lng: lng2 };
@@ -101,12 +87,12 @@
         return { lat: lat1, lng: lng1 };
       }
 
+      // swap direct
       const lat2 = lng1, lng2 = lat1;
       if (isValidLatLng(lat2, lng2)) return { lat: lat2, lng: lng2 };
 
       return null;
     }
-
     function formatDate(d){
       try {
         if (d && typeof d.toDate === "function") return d.toDate().toLocaleDateString("fr-FR");
@@ -115,23 +101,15 @@
       } catch(e) { return ""; }
     }
 
-    // ✅ Deep link vers FlutterFlow
+    // ✅ Deep link
     window.openDetails = function(id){
       window.location.href = "ff://signalement?id=" + id;
     };
 
-    // ✅ Icône rouge interactive (LA solution)
-    const redIcon = L.divIcon({
-      className: "leaflet-div-icon leaflet-interactive",
-      html: '<div class="marker-red"></div>',
-      iconSize: [22, 22],
-      iconAnchor: [11, 11]
-    });
-
+    // --- Load Firestore + draw points (✅ FIX 2: circleMarker = cliquable garanti)
     const snap = await getDocs(collection(db, "signalements"));
 
-    const points = [];
-
+    const bounds = [];
     snap.forEach((docSnap) => {
       const s = docSnap.data();
       const id = docSnap.id;
@@ -140,26 +118,35 @@
       if (!norm) return;
       if (ONLY_TUNISIA && !isInTunisia(norm.lat, norm.lng)) return;
 
-      const marker = L.marker([norm.lat, norm.lng], {
-        icon: redIcon,
-        interactive: true
-      }).addTo(map);
-
-      // ✅ Force: clique ouvre popup (utile WebView)
-      marker.on("click", () => marker.openPopup());
-
-      marker.bindPopup(`
+      const popupHtml = `
         <div class="popup-title">${s.title ?? ""}</div>
         <div class="popup-line">Statut : ${s.status ?? ""}</div>
         <div class="popup-line">Date : ${formatDate(s.createdAt)}</div>
         <button class="popup-btn" onclick="openDetails('${id}')">Voir détails</button>
-      `);
+      `;
 
-      points.push([norm.lat, norm.lng]);
+      const m = L.circleMarker([norm.lat, norm.lng], {
+        radius: 10,          // plus grand = plus facile à cliquer
+        weight: 2,
+        color: "#ffffff",
+        fillColor: "#e11d48",
+        fillOpacity: 1
+      }).addTo(map);
+
+      m.bindPopup(popupHtml);
+
+      // ✅ force clic -> popup (WebView friendly)
+      m.on("click", () => m.openPopup());
+
+      bounds.push([norm.lat, norm.lng]);
     });
 
-    if (points.length > 0) {
-      map.fitBounds(points, { padding: [30, 30] });
+    // centrer sur tes points
+    if (bounds.length > 0) {
+      map.fitBounds(bounds, { padding: [30, 30] });
+      setTimeout(fixSize, 50); // encore une fois après fitBounds
+    } else {
+      setTimeout(fixSize, 50);
     }
   </script>
 </body>
