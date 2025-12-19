@@ -28,9 +28,47 @@
     attribution: '&copy; OpenStreetMap contributors'
   }).addTo(map);
 
-  L.marker([36.8065, 10.1815])
-    .addTo(map)
-    .bindPopup("Tunis");
+ // ✅ Exemple de signalements (plus tard tu les remplaceras par Firestore)
+const signalements = [
+  {
+    id: "sig1",
+    title: "Poubelle cassée",
+    statut: "En attente",
+    date: "12/05/2025",
+    lat: 36.8065,
+    lng: 10.1815
+  },
+  {
+    id: "sig2",
+    title: "Route endommagée",
+    statut: "Traitée",
+    date: "10/05/2025",
+    lat: 36.815,
+    lng: 10.17
+  }
+];
+
+// ✅ Création des points rouges
+signalements.forEach(s => {
+  const marker = L.marker([s.lat, s.lng]).addTo(map);
+
+  // Popup avec détails
+  marker.bindPopup(`
+    <b>${s.title}</b><br/>
+    Statut : ${s.statut}<br/>
+    Date : ${s.date}<br/>
+    <button onclick="openDetails('${s.id}')">
+      Voir détails
+    </button>
+  `);
+});
+
+// ✅ Fonction appelée au clic
+function openDetails(id) {
+  // Envoie l’ID vers FlutterFlow
+  window.location.href = "ff://signalement?id=" + id;
+}
+
 </script>
 
 </body>
