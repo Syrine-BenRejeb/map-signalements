@@ -54,6 +54,8 @@
       maxZoom: 19,
       attribution: "&copy; OpenStreetMap contributors"
     }).addTo(map);
+    L.marker([36.8065, 10.1815]).addTo(map).bindPopup("TEST MARKER");
+
 
     // ✅ Helpers
     function toNumber(value) {
