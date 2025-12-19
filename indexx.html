@@ -5,76 +5,39 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1" />
   <title>Carte des signalements</title>
 
-  <!-- Leaflet -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
   <style>
-    html, body { height: 100%; margin: 0; padding: 0; }
-    #map { height: 100vh; width: 100vw; background:#e5e7eb; }
+    html,body{height:100%;margin:0;padding:0}
+    #map{height:100vh;width:100vw;background:#e5e7eb}
 
-    /* Debug bar */
-    #debugBar{
-      position:fixed; left:10px; top:10px; right:10px;
-      z-index: 99999;
-      background:#111827; color:white;
-      padding:10px 12px; border-radius:12px;
-      font-family: Arial, sans-serif; font-size: 13px;
-      display:none;
-      white-space: pre-wrap;
+    #card{
+      position:fixed;left:12px;right:12px;bottom:12px;z-index:9999;
+      background:#fff;border-radius:16px;box-shadow:0 10px 30px rgba(0,0,0,.18);
+      overflow:hidden;display:none;font-family:Arial,sans-serif;
     }
+    #cardTop{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px}
+    #cardTitle{margin:0;font-size:16px;font-weight:700;color:#111827;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    #closeBtn{width:42px;height:42px;border:none;border-radius:12px;background:#16a34a;color:#fff;font-size:20px;cursor:pointer}
+    #cardImg{width:100%;height:150px;object-fit:cover;background:#e5e7eb;display:none}
+    #cardMeta{display:flex;justify-content:space-between;padding:10px 12px 12px;font-size:14px;color:#111827}
+    #statusText{font-weight:700}
+    #cardActions{padding:0 12px 12px}
+    #detailsBtn{width:100%;border:none;border-radius:12px;background:#065f46;color:#fff;font-weight:800;font-size:15px;padding:12px 14px;cursor:pointer}
 
-    /* Bottom card */
-    #card {
-      position: fixed;
-      left: 12px;
-      right: 12px;
-      bottom: 12px;
-      z-index: 9999;
-      background: #fff;
-      border-radius: 16px;
-      box-shadow: 0 10px 30px rgba(0,0,0,.18);
-      overflow: hidden;
-      display: none;
-      font-family: Arial, sans-serif;
-    }
-    #cardTop {
-      display:flex; align-items:center; justify-content:space-between;
-      gap: 12px; padding: 12px;
-    }
-    #cardTitle {
-      margin:0; font-size: 16px; font-weight: 700; color:#111827;
-      flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
-    }
-    #closeBtn {
-      width: 42px; height: 42px; border: none; border-radius: 12px;
-      background: #16a34a; color: #fff; font-size: 20px; cursor: pointer;
-    }
-    #cardImg { width: 100%; height: 150px; object-fit: cover; background:#e5e7eb; display:none; }
-    #cardMeta { display:flex; justify-content:space-between; padding: 10px 12px 12px; font-size: 14px; color:#111827; }
-    #statusText { font-weight: 700; }
-    #cardActions { padding: 0 12px 12px; }
-    #detailsBtn {
-      width: 100%; border: none; border-radius: 12px;
-      background: #065f46; color: #fff; font-weight: 800; font-size: 15px;
-      padding: 12px 14px; cursor:pointer;
-    }
-
-    /* Make default pins clickable */
-    .leaflet-marker-icon, .leaflet-marker-shadow { pointer-events: auto !important; }
+    .leaflet-marker-icon,.leaflet-marker-shadow{pointer-events:auto!important}
   </style>
 </head>
-
 <body>
   <div id="map"></div>
-  <div id="debugBar"></div>
 
   <div id="card">
     <div id="cardTop">
       <h3 id="cardTitle">—</h3>
       <button id="closeBtn" type="button">×</button>
     </div>
-    <img id="cardImg" alt="Image du signalement" />
+    <img id="cardImg" alt="Image" />
     <div id="cardMeta">
       <div id="statusText">—</div>
       <div id="dateText">—</div>
@@ -84,46 +47,31 @@
     </div>
   </div>
 
-  <!-- 1) Leaflet démarre TOUJOURS (sans Firebase) -->
   <script>
-    const debugBar = document.getElementById("debugBar");
-    function showDebug(msg){
-      debugBar.style.display = "block";
-      debugBar.textContent = msg;
-    }
+    // Leaflet démarre direct (même si Firebase a un souci)
+    const map = L.map("map", { tap:false, zoomControl:true }).setView([36.8065,10.1815], 12);
+    window.map = map;
 
-    // Map start on Tunis
-    const map = L.map("map", { tap:false, zoomControl:true }).setView([36.8065, 10.1815], 12);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19}).addTo(map);
 
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      maxZoom: 19, attribution: "&copy; OpenStreetMap"
-    }).addTo(map);
-
-    // WebView size fix
-    function hardInvalidate() {
-      let tries = 0;
-      const t = setInterval(() => {
-        tries++;
-        map.invalidateSize(true);
-        const s = map.getSize();
-        if ((s.x > 80 && s.y > 80) || tries >= 20) clearInterval(t);
-      }, 150);
+    function hardInvalidate(){
+      let i=0;
+      const t=setInterval(()=>{
+        i++; map.invalidateSize(true);
+        const s=map.getSize();
+        if((s.x>80 && s.y>80) || i>=20) clearInterval(t);
+      },150);
     }
     window.addEventListener("load", hardInvalidate);
-    document.addEventListener("visibilitychange", () => { if (!document.hidden) hardInvalidate(); });
-
-    // Global error display (super utile)
-    window.addEventListener("error", (e) => showDebug("JS ERROR:\n" + (e.message || e.error)));
-    window.addEventListener("unhandledrejection", (e) => showDebug("PROMISE ERROR:\n" + (e.reason?.message || e.reason)));
+    document.addEventListener("visibilitychange",()=>{ if(!document.hidden) hardInvalidate(); });
   </script>
 
-  <!-- 2) Firebase en module (si erreur => map reste visible) -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
     import { getFirestore, collection, getDocs } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
 
-    // ✅ Mets TON vrai firebaseConfig ici (obligatoire)
-    const firebaseConfig = {
+    // ✅ METS TON CONFIG ICI
+   const firebaseConfig = {
   apiKey: "AIzaSyAaPvnFtMPUKEy9TXfy9sw9ollnxm820m8",
   authDomain: "smartcity-f2401.firebaseapp.com",
   projectId: "smartcity-f2401",
@@ -132,14 +80,12 @@
   appId: "1:113851035276:web:1535cc7a244369ebedd5a9"
 };
 
-
-    // --- Helpers coords ---
     function parseCoord(v){
-      if (v === null || v === undefined) return null;
-      if (typeof v === "number") return v;
-      if (typeof v === "string") {
-        const n = Number(v.trim().replace(",", "."));
-        return Number.isFinite(n) ? n : null;
+      if(v===null||v===undefined) return null;
+      if(typeof v==="number") return v;
+      if(typeof v==="string"){
+        const n=Number(v.trim().replace(",","."));
+        return Number.isFinite(n)?n:null;
       }
       return null;
     }
@@ -147,13 +93,13 @@
     function normalizeLatLng(latRaw,lngRaw){
       let lat=parseCoord(latRaw), lng=parseCoord(lngRaw);
       if(lat===null||lng===null) return null;
-      if (Math.abs(lat) < 20 && Math.abs(lng) > 20) [lat,lng]=[lng,lat]; // swap
+      if(Math.abs(lat)<20 && Math.abs(lng)>20) [lat,lng]=[lng,lat]; // swap
       if(!inTunisia(lat,lng)) return null;
       return {lat,lng};
     }
     function formatDate(ts){
       try{
-        const d = ts?.toDate ? ts.toDate() : null;
+        const d=ts?.toDate?ts.toDate():null;
         if(!d) return "—";
         const dd=String(d.getDate()).padStart(2,"0");
         const mm=String(d.getMonth()+1).padStart(2,"0");
@@ -161,91 +107,84 @@
         return `${dd}/${mm}/${yyyy}`;
       }catch{ return "—"; }
     }
+    function esc(s){
+      return String(s??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;");
+    }
 
-    // Card elements
-    const card = document.getElementById("card");
-    const cardTitle = document.getElementById("cardTitle");
-    const cardImg = document.getElementById("cardImg");
-    const statusText = document.getElementById("statusText");
-    const dateText = document.getElementById("dateText");
-    const closeBtn = document.getElementById("closeBtn");
-    const detailsBtn = document.getElementById("detailsBtn");
-    let selectedId = null;
+    // Card
+    const card=document.getElementById("card");
+    const cardTitle=document.getElementById("cardTitle");
+    const cardImg=document.getElementById("cardImg");
+    const statusText=document.getElementById("statusText");
+    const dateText=document.getElementById("dateText");
+    const closeBtn=document.getElementById("closeBtn");
+    const detailsBtn=document.getElementById("detailsBtn");
+    let selectedId=null;
 
     function openCard(data){
-      selectedId = data.id;
-      cardTitle.textContent = data.title || "Sans titre";
-      statusText.textContent = data.status || "—";
-      dateText.textContent = formatDate(data.createdAt);
-      if (data.imageUrl) { cardImg.src = data.imageUrl; cardImg.style.display="block"; }
+      selectedId=data.id;
+      cardTitle.textContent=data.title||"Sans titre";
+      statusText.textContent=data.status||"—";
+      dateText.textContent=formatDate(data.createdAt);
+      if(data.imageUrl){ cardImg.src=data.imageUrl; cardImg.style.display="block"; }
       else { cardImg.style.display="none"; }
-      card.style.display = "block";
+      card.style.display="block";
     }
-    closeBtn.addEventListener("click", ()=>{ card.style.display="none"; selectedId=null; });
-    detailsBtn.addEventListener("click", ()=>{
+    closeBtn.addEventListener("click",()=>{card.style.display="none";selectedId=null;});
+    detailsBtn.addEventListener("click",()=>{
       if(!selectedId) return;
-      window.location.href = `ff://signalement?id=${encodeURIComponent(selectedId)}`;
+      location.href = `ff://signalement?id=${encodeURIComponent(selectedId)}`;
     });
 
-    // -------- Firebase init (catch errors) --------
-    let app, db;
-    try{
-      app = initializeApp(firebaseConfig);
-      db = getFirestore(app);
-    }catch(err){
-      // Map stays visible, show error
-      document.getElementById("debugBar").style.display = "block";
-      document.getElementById("debugBar").textContent =
-        "FIREBASE CONFIG ERROR:\n" + (err?.message || err);
-      throw err;
-    }
+    // Firebase
+    const app=initializeApp(firebaseConfig);
+    const db=getFirestore(app);
 
-    // Load markers
-    const markers = [];
-    async function loadSignalements(){
-      const snap = await getDocs(collection(db, "signalements"));
+    const markers=[];
+    const snap=await getDocs(collection(db,"signalements"));
 
-      snap.forEach((doc)=>{
-        const d = doc.data();
-        const id = doc.id;
+    snap.forEach((doc)=>{
+      const d=doc.data();
+      const id=doc.id;
 
-        const coord = normalizeLatLng(d.latitude, d.longitude);
-        if(!coord) return;
+      const coord=normalizeLatLng(d.latitude,d.longitude);
+      if(!coord) return;
 
-        const data = {
-          id,
-          title: d.title || "",
-          status: d.status || "",
-          createdAt: d.createdAt,
-          imageUrl: d.imageUrl || "",
-          lat: coord.lat,
-          lng: coord.lng
-        };
+      const data={
+        id,
+        title:d.title||"",
+        status:d.status||"",
+        createdAt:d.createdAt,
+        imageUrl:d.imageUrl||"",
+        lat:coord.lat,
+        lng:coord.lng
+      };
 
-        const m = L.marker([data.lat, data.lng], { interactive:true }).addTo(window.map || map);
+      const m=L.marker([data.lat,data.lng],{interactive:true}).addTo(window.map);
 
-        m.on("click", ()=>{
-          openCard(data);
-          (window.map || map).setView([data.lat, data.lng], Math.max((window.map||map).getZoom(), 16), {animate:true});
-        });
-
-        m.bindPopup(
-          `<b>${data.title || "Sans titre"}</b><br>
-           Statut : ${data.status || "—"}<br>
-           Date : ${formatDate(data.createdAt)}<br>
-           <button onclick="location.href='ff://signalement?id=${encodeURIComponent(id)}'">Voir détails</button>`
-        );
-
-        markers.push(m);
+      m.on("click",()=>{
+        openCard(data);
+        window.map.setView([data.lat,data.lng], Math.max(window.map.getZoom(),16), {animate:true});
       });
 
-      if(markers.length>0){
-        const group = L.featureGroup(markers);
-        (window.map || map).fitBounds(group.getBounds().pad(0.2));
-      }
-    }
+      m.bindPopup(`
+        <div style="min-width:220px">
+          <b>${esc(data.title||"Sans titre")}</b><br>
+          Statut : ${esc(data.status||"—")}<br>
+          Date : ${esc(formatDate(data.createdAt))}<br>
+          <button onclick="location.href='ff://signalement?id=${encodeURIComponent(id)}'">Voir détails</button>
+        </div>
+      `);
 
-    loadSignalements();
+      markers.push(m);
+    });
+
+    if(markers.length>0){
+      const g=L.featureGroup(markers);
+      window.map.fitBounds(g.getBounds().pad(0.2));
+    }else{
+      window.map.setView([36.8065,10.1815],12);
+    }
   </script>
 </body>
 </html>
