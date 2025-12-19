@@ -1,26 +1,7 @@
-<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-  <style>
-    html, body {
-      height: 100%;
-      margin: 0;
-    }
-    #map {
-      height: 100vh;
-      width: 100vw;
-    }
-  </style>
-</head>
-<body>
-
-<div id="map"></div>
-
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
 <script>
+  // 🔵 MAP
   var map = L.map('map').setView([36.8065, 10.1815], 11);
 
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -28,48 +9,57 @@
     attribution: '&copy; OpenStreetMap contributors'
   }).addTo(map);
 
- // ✅ Exemple de signalements (plus tard tu les remplaceras par Firestore)
-const signalements = [
-  {
-    id: "sig1",
-    title: "Poubelle cassée",
-    statut: "En attente",
-    date: "12/05/2025",
-    lat: 36.8065,
-    lng: 10.1815
-  },
-  {
-    id: "sig2",
-    title: "Route endommagée",
-    statut: "Traitée",
-    date: "10/05/2025",
-    lat: 36.815,
-    lng: 10.17
+  // 🔵 FORMAT DATE
+  function formatDate(d){
+    try{
+      if (d && typeof d.toDate === "function") {
+        return d.toDate().toLocaleDateString("fr-FR");
+      }
+      return "";
+    }catch(e){
+      return "";
+    }
   }
-];
 
-// ✅ Création des points rouges
-signalements.forEach(s => {
-  const marker = L.marker([s.lat, s.lng]).addTo(map);
-
-  // Popup avec détails
-  marker.bindPopup(`
-    <b>${s.title}</b><br/>
-    Statut : ${s.statut}<br/>
-    Date : ${s.date}<br/>
-    <button onclick="openDetails('${s.id}')">
-      Voir détails
-    </button>
-  `);
-});
-
-// ✅ Fonction appelée au clic
-function openDetails(id) {
-  // Envoie l’ID vers FlutterFlow
-  window.location.href = "ff://signalement?id=" + id;
-}
-
+  // 🔵 OUVRIR DETAILS (FlutterFlow)
+  window.openDetails = function(id){
+    window.location.href = "ff://signalement?id=" + id;
+  };
 </script>
 
-</body>
-</html>
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
+  import { getFirestore, collection, getDocs } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+
+  // ⚠️ COLLE TA CONFIG FIREBASE ICI
+  const firebaseConfig = {
+  apiKey: "AIzaSyAaPvnFtMPUKEy9TXfy9sw9ollnxm820m8",
+  authDomain: "smartcity-f2401.firebaseapp.com",
+  projectId: "smartcity-f2401",
+  storageBucket: "smartcity-f2401.firebasestorage.app",
+  messagingSenderId: "113851035276",
+  appId: "1:113851035276:web:1535cc7a244369ebedd5a9"
+};
+
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+
+  // 🔥 LECTURE DES SIGNALEMENTS
+  const snapshot = await getDocs(collection(db, "signalements"));
+
+  snapshot.forEach((docSnap) => {
+    const s = docSnap.data();
+    const id = docSnap.id;
+
+    if (typeof s.latitude !== "number" || typeof s.longitude !== "number") return;
+
+    const marker = L.marker([s.latitude, s.longitude]).addTo(map);
+
+    marker.bindPopup(`
+      <b>${s.title ?? ""}</b><br/>
+      Statut : ${s.status ?? ""}<br/>
+      Date : ${formatDate(s.createdAt)}<br/>
+      <button onclick="openDetails('${id}')">Voir détails</button>
+    `);
+  });
+</script>
