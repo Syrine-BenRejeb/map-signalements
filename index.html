@@ -9,6 +9,17 @@
     html, body { height: 100%; margin: 0; }
     #map { height: 100vh; width: 100vw; }
 
+    /* ✅ Marker rouge cliquable (plus visible que celui par défaut) */
+    .marker-red {
+      background: #e11d48;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      border: 2px solid white;
+      box-shadow: 0 0 8px rgba(0,0,0,.45);
+    }
+
+    /* ✅ Popup */
     .popup-title { font-weight: 700; margin-bottom: 6px; }
     .popup-line { margin: 2px 0; }
     .popup-btn {
@@ -22,7 +33,7 @@
       font-weight: 600;
     }
 
-    /* petit bandeau debug */
+    /* ✅ Bandeau debug */
     .debug {
       position: fixed;
       top: 10px;
@@ -35,7 +46,8 @@
       font-family: Arial, sans-serif;
       font-size: 13px;
       line-height: 1.3;
-      max-width: 90vw;
+      max-width: 92vw;
+      pointer-events: none;
     }
   </style>
 </head>
@@ -50,7 +62,7 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
     import { getFirestore, collection, getDocs } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 
-    // ✅ COLLE TA CONFIG FIREBASE ICI
+    // ✅ 1) COLLE TA CONFIG FIREBASE ICI
     const firebaseConfig = {
   apiKey: "AIzaSyAaPvnFtMPUKEy9TXfy9sw9ollnxm820m8",
   authDomain: "smartcity-f2401.firebaseapp.com",
@@ -60,27 +72,34 @@
   appId: "1:113851035276:web:1535cc7a244369ebedd5a9"
 };
 
-    // ✅ SWITCH : mets false si tu veux afficher tous les points même hors Tunisie (debug)
+
+    // ✅ Mets false si tu veux afficher les points même hors Tunisie (debug)
     const ONLY_TUNISIA = true;
+
+    // ---------- Debug UI ----------
+    const debugEl = document.getElementById("debug");
+    function setDebug(text){ debugEl.textContent = text; }
 
     // ---------- Init Firebase ----------
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
 
-    // ---------- Init Map ----------
+    // ---------- Init Map (Tunis) ----------
     const map = L.map("map").setView([36.8065, 10.1815], 12);
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
       maxZoom: 19,
       attribution: "&copy; OpenStreetMap contributors"
     }).addTo(map);
 
-    // ✅ Test marker (tu peux le supprimer après)
-    // L.marker([36.8065, 10.1815]).addTo(map).bindPopup("TEST MARKER");
+    // ✅ Icon rouge Leaflet
+    const redIcon = L.divIcon({
+      className: "",
+      html: '<div class="marker-red"></div>',
+      iconSize: [18, 18],
+      iconAnchor: [9, 9]
+    });
 
     // ---------- Helpers ----------
-    const debugEl = document.getElementById("debug");
-    function setDebug(text){ debugEl.textContent = text; }
-
     function toNumber(value) {
       const n = Number(String(value ?? "").trim().replace(",", "."));
       return Number.isFinite(n) ? n : null;
@@ -95,7 +114,7 @@
       return lat >= 30 && lat <= 38.5 && lng >= 7 && lng <= 12.5;
     }
 
-    // Corrige auto si inversé
+    // Corrige auto si lat/lng inversés
     function normalizeLatLng(a, b) {
       const lat1 = toNumber(a);
       const lng1 = toNumber(b);
@@ -129,7 +148,7 @@
       } catch(e) { return ""; }
     }
 
-    // Deep link vers FlutterFlow
+    // ✅ Deep link vers FlutterFlow
     window.openDetails = function(id){
       window.location.href = "ff://signalement?id=" + id;
     };
@@ -152,7 +171,6 @@
       const s = docSnap.data();
       const id = docSnap.id;
 
-      // TES champs
       const norm = normalizeLatLng(s.latitude, s.longitude);
       if (!norm) { skippedInvalid++; return; }
 
@@ -164,7 +182,8 @@
       const lat = norm.lat;
       const lng = norm.lng;
 
-      const marker = L.marker([lat, lng]).addTo(map);
+      // ✅ Marker rouge cliquable
+      const marker = L.marker([lat, lng], { icon: redIcon }).addTo(map);
       markersCount++;
 
       marker.bindPopup(`
@@ -177,19 +196,19 @@
       points.push([lat, lng]);
     });
 
-    // Center
+    // ---------- Center map ----------
     if (points.length > 0) {
       map.fitBounds(points, { padding: [30, 30] });
     } else {
       map.setView([36.8065, 10.1815], 12);
     }
 
-    // Debug final
+    // ---------- Debug summary ----------
     setDebug(
-      "Docs Firestore: " + snap.size +
+      "Docs: " + snap.size +
       " | Markers: " + markersCount +
-      " | Invalid coords: " + skippedInvalid +
-      " | Out Tunisia: " + skippedOutTunisia +
+      " | Invalid: " + skippedInvalid +
+      " | OutTN: " + skippedOutTunisia +
       " | ONLY_TUNISIA=" + ONLY_TUNISIA
     );
   </script>
