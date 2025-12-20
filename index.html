@@ -5,22 +5,20 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Carte Signalements</title>
 
-  <!-- Leaflet -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 
   <style>
     html, body, #map { height: 100%; margin: 0; }
 
-    /* Bandeau debug */
     #debug {
       position: absolute;
       z-index: 9999;
       left: 10px;
       right: 10px;
       bottom: 10px;
-      max-width: 700px;
+      max-width: 900px;
       margin: 0 auto;
-      background: rgba(0,0,0,0.75);
+      background: rgba(0,0,0,0.78);
       color: #fff;
       padding: 10px 12px;
       border-radius: 12px;
@@ -29,6 +27,7 @@
       line-height: 1.35;
       white-space: pre-wrap;
     }
+
     .popup-title { font-weight: 800; font-size: 16px; margin: 0 0 6px; }
     .badge { display:inline-block; padding:3px 8px; border-radius:999px; font-size:12px; margin-top:4px; }
     .badge-red { background:#ffebee; color:#c62828; }
@@ -42,15 +41,13 @@
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
-  <!-- Firebase (Web SDK v9) -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
     import { getFirestore, collection, getDocs } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
 
-    // ==================================================
-    // ✅ REMPLACE CE BLOC PAR TON firebaseConfig
-    // Firebase Console → Project Settings → Your apps → Web
-    // ==================================================
+    // ==============================
+    // ✅ REMPLACE PAR TON firebaseConfig
+    // ==============================
    const firebaseConfig = {
   apiKey: "AIzaSyAaPvnFtMPUKEy9TXfy9sw9ollnxm820m8",
   authDomain: "smartcity-f2401.firebaseapp.com",
@@ -62,14 +59,14 @@
 
 
     const debugBox = document.getElementById("debug");
-    function setDebug(msg) {
-      debugBox.textContent = msg;
+    const logs = [];
+    function log(msg) {
+      logs.push(msg);
+      debugBox.textContent = logs.slice(-12).join("\n");
       console.log(msg);
     }
 
-    // ==========
-    // Map init
-    // ==========
+    // Map init (Tunis)
     const map = L.map("map").setView([36.8065, 10.1815], 11);
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
       maxZoom: 19,
@@ -78,14 +75,50 @@
 
     const markersLayer = L.layerGroup().addTo(map);
 
-    // Petit marker test (si tu veux vérifier que ça charge)
-    // L.circleMarker([36.8065, 10.1815], {radius:8, color:"#1E88E5", fillColor:"#1E88E5", fillOpacity:0.9}).addTo(map).bindPopup("TEST TUNIS");
-
     function toNumber(v) {
-      // accepte 36.8 ou "36,8"
       const s = String(v ?? "").trim().replace(",", ".");
       const n = parseFloat(s);
       return Number.isFinite(n) ? n : null;
+    }
+
+    // Tunisia approx: lat 30..38, lng 6..12
+    function inTunisia(lat, lng) {
+      return lat >= 30 && lat <= 38 && lng >= 6 && lng <= 12;
+    }
+
+    function fixLatLngMaybe(lat, lng) {
+      if (lat == null || lng == null) return [null, null];
+      if (inTunisia(lat, lng)) return [lat, lng];
+      if (inTunisia(lng, lat)) return [lng, lat]; // inversé
+      return [lat, lng];
+    }
+
+    function extractLatLng(data) {
+      // 1) latitude/longitude
+      let lat = toNumber(data.latitude);
+      let lng = toNumber(data.longitude);
+      if (lat != null && lng != null) return [lat, lng, "latitude/longitude"];
+
+      // 2) lat/lng
+      lat = toNumber(data.lat);
+      lng = toNumber(data.lng);
+      if (lat != null && lng != null) return [lat, lng, "lat/lng"];
+
+      // 3) location (GeoPoint)
+      const glat = data.location?.latitude ?? data.location?.lat ?? null;
+      const glng = data.location?.longitude ?? data.location?.lng ?? null;
+      lat = toNumber(glat);
+      lng = toNumber(glng);
+      if (lat != null && lng != null) return [lat, lng, "location(GeoPoint)"];
+
+      // 4) position (au cas où)
+      const plat = data.position?.latitude ?? data.position?.lat ?? null;
+      const plng = data.position?.longitude ?? data.position?.lng ?? null;
+      lat = toNumber(plat);
+      lng = toNumber(plng);
+      if (lat != null && lng != null) return [lat, lng, "position"];
+
+      return [null, null, "not_found"];
     }
 
     function formatDate(ts) {
@@ -107,33 +140,22 @@
         : `<span class="badge badge-red">Non résolu</span>`;
     }
 
-    // Détecte inversion lat/lng :
-    // - Tunisia approx: lat 30..38, lng 6..12
-    function fixLatLngMaybe(lat, lng) {
-      const inTunisia = (a,b) => a >= 30 && a <= 38 && b >= 6 && b <= 12;
-
-      if (lat == null || lng == null) return [null, null];
-
-      // Si déjà correct
-      if (inTunisia(lat, lng)) return [lat, lng];
-
-      // Si inversé
-      if (inTunisia(lng, lat)) return [lng, lat];
-
-      // Sinon garde tel quel (monde)
-      return [lat, lng];
-    }
-
     function addSignalementMarker(docId, data) {
-      let lat = toNumber(data.latitude);
-      let lng = toNumber(data.longitude);
-
+      let [lat, lng, source] = extractLatLng(data);
       [lat, lng] = fixLatLngMaybe(lat, lng);
 
-      // ignore invalides
-      if (lat === null || lng === null) return null;
-      if (lat === 0 || lng === 0) return null;
-      if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
+      if (lat == null || lng == null) {
+        log(`⛔ ${docId}: coords introuvables (source=${source})`);
+        return null;
+      }
+      if (lat === 0 || lng === 0) {
+        log(`⛔ ${docId}: coords = 0,0 ignorées`);
+        return null;
+      }
+      if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+        log(`⛔ ${docId}: coords hors limites lat=${lat} lng=${lng}`);
+        return null;
+      }
 
       const title = data.title ?? "Sans titre";
       const status = data.status ?? "";
@@ -149,7 +171,7 @@
             ${category ? `Catégorie: <b>${category}</b><br>` : ""}
             ${community ? `Communauté: <b>${community}</b><br>` : ""}
             ${dateStr ? `Date: <b>${dateStr}</b><br>` : ""}
-            <span style="color:#666;">lat=${lat}, lng=${lng}</span>
+            <span style="color:#666;">(${source}) lat=${lat}, lng=${lng}</span>
           </div>
         </div>
       `;
@@ -170,20 +192,17 @@
 
     async function main() {
       markersLayer.clearLayers();
+      logs.length = 0;
 
       try {
-        setDebug("1) Initialisation Firebase...\n");
+        log("⏳ Init Firebase...");
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
 
-        setDebug("2) Lecture Firestore: collection 'signalements'...\n");
+        log("⏳ Lecture Firestore: signalements...");
         const snap = await getDocs(collection(db, "signalements"));
 
-        setDebug(
-          "✅ Firestore OK\n" +
-          `Docs trouvés: ${snap.size}\n` +
-          "Ajout des markers...\n"
-        );
+        log(`✅ Docs trouvés: ${snap.size}`);
 
         let points = [];
         let added = 0;
@@ -193,15 +212,11 @@
           if (p) { points.push(p); added++; }
         });
 
-        setDebug(
-          "✅ Terminé\n" +
-          `Docs trouvés: ${snap.size}\n` +
-          `Markers ajoutés: ${added}\n\n` +
-          "Si 0 marker:\n" +
-          "- latitude/longitude vides\n" +
-          "- règles Firestore (read)\n" +
-          "- mauvais firebaseConfig"
-        );
+        log(`✅ Markers ajoutés: ${added}`);
+
+        if (added === 0 && snap.size > 0) {
+          log("⚠️ Aucun marker: champs coords manquants ou mauvais noms (lat/lng/location).");
+        }
 
         if (points.length > 0) {
           map.fitBounds(L.latLngBounds(points).pad(0.2));
@@ -209,14 +224,9 @@
 
       } catch (e) {
         console.error(e);
-        setDebug(
-          "❌ ERREUR\n" +
-          (e?.message || e) +
-          "\n\nFix rapides:\n" +
-          "A) Firestore Rules: allow read\n" +
-          "B) Vérifie firebaseConfig\n" +
-          "C) Vérifie collection 'signalements'\n"
-        );
+        log("❌ Erreur Firestore:");
+        log(String(e?.message || e));
+        log("✅ Fix: Firestore Rules allow read + firebaseConfig correct.");
       }
     }
 
