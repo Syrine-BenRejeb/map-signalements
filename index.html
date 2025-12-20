@@ -2,76 +2,37 @@
 <html lang="fr">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1" />
-  <title>Carte des signalements</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Carte Signalements</title>
 
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
+  <!-- Leaflet -->
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+  />
   <style>
-    html,body{height:100%;margin:0;padding:0}
-    #map{height:100vh;width:100vw;background:#e5e7eb}
-
-    #card{
-      position:fixed;left:12px;right:12px;bottom:12px;z-index:9999;
-      background:#fff;border-radius:16px;box-shadow:0 10px 30px rgba(0,0,0,.18);
-      overflow:hidden;display:none;font-family:Arial,sans-serif;
-    }
-    #cardTop{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px}
-    #cardTitle{margin:0;font-size:16px;font-weight:700;color:#111827;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    #closeBtn{width:42px;height:42px;border:none;border-radius:12px;background:#16a34a;color:#fff;font-size:20px;cursor:pointer}
-    #cardImg{width:100%;height:150px;object-fit:cover;background:#e5e7eb;display:none}
-    #cardMeta{display:flex;justify-content:space-between;padding:10px 12px 12px;font-size:14px;color:#111827}
-    #statusText{font-weight:700}
-    #cardActions{padding:0 12px 12px}
-    #detailsBtn{width:100%;border:none;border-radius:12px;background:#065f46;color:#fff;font-weight:800;font-size:15px;padding:12px 14px;cursor:pointer}
-
-    .leaflet-marker-icon,.leaflet-marker-shadow{pointer-events:auto!important}
+    html, body, #map { height: 100%; margin: 0; }
+    .popup-title { font-weight: 700; font-size: 16px; margin: 0 0 6px; }
+    .badge { display:inline-block; padding:3px 8px; border-radius:999px; font-size:12px; }
+    .badge-red { background:#ffebee; color:#c62828; }
+    .badge-green { background:#e8f5e9; color:#2e7d32; }
+    .meta { font-size: 12px; color: #555; margin-top: 6px; }
   </style>
 </head>
 <body>
   <div id="map"></div>
 
-  <div id="card">
-    <div id="cardTop">
-      <h3 id="cardTitle">—</h3>
-      <button id="closeBtn" type="button">×</button>
-    </div>
-    <img id="cardImg" alt="Image" />
-    <div id="cardMeta">
-      <div id="statusText">—</div>
-      <div id="dateText">—</div>
-    </div>
-    <div id="cardActions">
-      <button id="detailsBtn" type="button">Voir détails</button>
-    </div>
-  </div>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
-  <script>
-    // Leaflet démarre direct (même si Firebase a un souci)
-    const map = L.map("map", { tap:false, zoomControl:true }).setView([36.8065,10.1815], 12);
-    window.map = map;
-
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19}).addTo(map);
-
-    function hardInvalidate(){
-      let i=0;
-      const t=setInterval(()=>{
-        i++; map.invalidateSize(true);
-        const s=map.getSize();
-        if((s.x>80 && s.y>80) || i>=20) clearInterval(t);
-      },150);
-    }
-    window.addEventListener("load", hardInvalidate);
-    document.addEventListener("visibilitychange",()=>{ if(!document.hidden) hardInvalidate(); });
-  </script>
-
+  <!-- Firebase (Web SDK v9) -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
-    import { getFirestore, collection, getDocs } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
+    import {
+      getFirestore, collection, getDocs, query, orderBy
+    } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
 
-    // ✅ METS TON CONFIG ICI
-   const firebaseConfig = {
+    // ✅ 1) REMPLACE PAR TA CONFIG FIREBASE
+    const firebaseConfig = {
   apiKey: "AIzaSyAaPvnFtMPUKEy9TXfy9sw9ollnxm820m8",
   authDomain: "smartcity-f2401.firebaseapp.com",
   projectId: "smartcity-f2401",
@@ -80,111 +41,92 @@
   appId: "1:113851035276:web:1535cc7a244369ebedd5a9"
 };
 
-    function parseCoord(v){
-      if(v===null||v===undefined) return null;
-      if(typeof v==="number") return v;
-      if(typeof v==="string"){
-        const n=Number(v.trim().replace(",","."));
-        return Number.isFinite(n)?n:null;
-      }
-      return null;
-    }
-    function inTunisia(lat,lng){ return lat>=30.0 && lat<=37.6 && lng>=7.0 && lng<=12.5; }
-    function normalizeLatLng(latRaw,lngRaw){
-      let lat=parseCoord(latRaw), lng=parseCoord(lngRaw);
-      if(lat===null||lng===null) return null;
-      if(Math.abs(lat)<20 && Math.abs(lng)>20) [lat,lng]=[lng,lat]; // swap
-      if(!inTunisia(lat,lng)) return null;
-      return {lat,lng};
-    }
-    function formatDate(ts){
-      try{
-        const d=ts?.toDate?ts.toDate():null;
-        if(!d) return "—";
-        const dd=String(d.getDate()).padStart(2,"0");
-        const mm=String(d.getMonth()+1).padStart(2,"0");
-        const yyyy=d.getFullYear();
+
+    // Init Firebase
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    // ✅ Init Leaflet map (centre Tunis)
+    const map = L.map('map').setView([36.8065, 10.1815], 11);
+
+    // Tiles OSM (gratuit)
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; OpenStreetMap'
+    }).addTo(map);
+
+    // Groupe de markers pour nettoyer/rafraîchir
+    const markersLayer = L.layerGroup().addTo(map);
+
+    function formatDate(ts) {
+      try {
+        // Firestore Timestamp -> Date
+        const d = ts?.toDate ? ts.toDate() : (ts instanceof Date ? ts : null);
+        if (!d) return "";
+        const dd = String(d.getDate()).padStart(2, '0');
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const yyyy = d.getFullYear();
         return `${dd}/${mm}/${yyyy}`;
-      }catch{ return "—"; }
-    }
-    function esc(s){
-      return String(s??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;");
+      } catch { return ""; }
     }
 
-    // Card
-    const card=document.getElementById("card");
-    const cardTitle=document.getElementById("cardTitle");
-    const cardImg=document.getElementById("cardImg");
-    const statusText=document.getElementById("statusText");
-    const dateText=document.getElementById("dateText");
-    const closeBtn=document.getElementById("closeBtn");
-    const detailsBtn=document.getElementById("detailsBtn");
-    let selectedId=null;
-
-    function openCard(data){
-      selectedId=data.id;
-      cardTitle.textContent=data.title||"Sans titre";
-      statusText.textContent=data.status||"—";
-      dateText.textContent=formatDate(data.createdAt);
-      if(data.imageUrl){ cardImg.src=data.imageUrl; cardImg.style.display="block"; }
-      else { cardImg.style.display="none"; }
-      card.style.display="block";
+    function statusBadge(status, isResolved) {
+      const resolved = (isResolved === true) || (String(status).toLowerCase().includes("résolu"));
+      if (resolved) return `<span class="badge badge-green">Résolu</span>`;
+      return `<span class="badge badge-red">Non résolu</span>`;
     }
-    closeBtn.addEventListener("click",()=>{card.style.display="none";selectedId=null;});
-    detailsBtn.addEventListener("click",()=>{
-      if(!selectedId) return;
-      location.href = `ff://signalement?id=${encodeURIComponent(selectedId)}`;
-    });
 
-    // Firebase
-    const app=initializeApp(firebaseConfig);
-    const db=getFirestore(app);
+    function addSignalementMarker(docId, data) {
+      const lat = Number(data.latitude);
+      const lng = Number(data.longitude);
 
-    const markers=[];
-    const snap=await getDocs(collection(db,"signalements"));
+      // Ignore coords invalides
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+      if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return;
 
-    snap.forEach((doc)=>{
-      const d=doc.data();
-      const id=doc.id;
-
-      const coord=normalizeLatLng(d.latitude,d.longitude);
-      if(!coord) return;
-
-      const data={
-        id,
-        title:d.title||"",
-        status:d.status||"",
-        createdAt:d.createdAt,
-        imageUrl:d.imageUrl||"",
-        lat:coord.lat,
-        lng:coord.lng
-      };
-
-      const m=L.marker([data.lat,data.lng],{interactive:true}).addTo(window.map);
-
-      m.on("click",()=>{
-        openCard(data);
-        window.map.setView([data.lat,data.lng], Math.max(window.map.getZoom(),16), {animate:true});
+      // ✅ Boule bleue (circleMarker)
+      const m = L.circleMarker([lat, lng], {
+        radius: 8,
+        color: "#1E88E5",
+        fillColor: "#1E88E5",
+        fillOpacity: 0.9,
+        weight: 2
       });
 
-      m.bindPopup(`
-        <div style="min-width:220px">
-          <b>${esc(data.title||"Sans titre")}</b><br>
-          Statut : ${esc(data.status||"—")}<br>
-          Date : ${esc(formatDate(data.createdAt))}<br>
-          <button onclick="location.href='ff://signalement?id=${encodeURIComponent(id)}'">Voir détails</button>
+      const title = data.title ?? "Sans titre";
+      const status = data.status ?? "";
+      const category = data.category ?? "";
+      const community = data.community ?? "";
+      const dateStr = formatDate(data.createdAt);
+
+      const popupHtml = `
+        <div>
+          <div class="popup-title">${title}</div>
+          <div>${statusBadge(status, data.isResolved)}</div>
+          <div class="meta">
+            ${category ? `Catégorie: <b>${category}</b><br>` : ""}
+            ${community ? `Communauté: <b>${community}</b><br>` : ""}
+            ${dateStr ? `Date: <b>${dateStr}</b>` : ""}
+          </div>
         </div>
-      `);
+      `;
 
-      markers.push(m);
-    });
-
-    if(markers.length>0){
-      const g=L.featureGroup(markers);
-      window.map.fitBounds(g.getBounds().pad(0.2));
-    }else{
-      window.map.setView([36.8065,10.1815],12);
+      m.bindPopup(popupHtml);
+      m.addTo(markersLayer);
     }
+
+    async function loadSignalements() {
+      markersLayer.clearLayers();
+
+      // ✅ 2) Récupérer Firestore
+      const q = query(collection(db, "signalements"), orderBy("createdAt", "desc"));
+      const snap = await getDocs(q);
+
+      snap.forEach((doc) => addSignalementMarker(doc.id, doc.data()));
+    }
+
+    // Lancer au chargement
+    loadSignalements();
   </script>
 </body>
 </html>
