@@ -3,35 +3,55 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Carte Signalements</title>
+  <title>Carte des signalements</title>
 
   <!-- Leaflet -->
-  <link
-    rel="stylesheet"
-    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-  />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+
   <style>
     html, body, #map { height: 100%; margin: 0; }
-    .popup-title { font-weight: 700; font-size: 16px; margin: 0 0 6px; }
-    .badge { display:inline-block; padding:3px 8px; border-radius:999px; font-size:12px; }
+
+    /* petit bandeau debug */
+    #debug {
+      position: absolute;
+      z-index: 9999;
+      left: 10px;
+      bottom: 10px;
+      right: 10px;
+      max-width: 520px;
+      background: rgba(0,0,0,0.70);
+      color: #fff;
+      padding: 10px 12px;
+      border-radius: 12px;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      font-size: 12px;
+      line-height: 1.35;
+      display: none;
+      white-space: pre-wrap;
+    }
+    #debug strong { color: #ffd54f; }
+
+    .popup-title { font-weight: 800; font-size: 16px; margin: 0 0 6px; }
+    .badge { display:inline-block; padding:3px 8px; border-radius:999px; font-size:12px; margin-top:4px; }
     .badge-red { background:#ffebee; color:#c62828; }
     .badge-green { background:#e8f5e9; color:#2e7d32; }
-    .meta { font-size: 12px; color: #555; margin-top: 6px; }
+    .meta { font-size: 12px; color: #444; margin-top: 8px; }
   </style>
 </head>
 <body>
   <div id="map"></div>
+  <div id="debug"></div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
-  <!-- Firebase (Web SDK v9) -->
+  <!-- Firebase v9 -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
-    import {
-      getFirestore, collection, getDocs, query, orderBy
-    } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
+    import { getFirestore, collection, getDocs } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
 
-    // ✅ 1) REMPLACE PAR TA CONFIG FIREBASE
+    // ============================
+    // ✅ 1) REMPLACE firebaseConfig
+    // ============================
     const firebaseConfig = {
   apiKey: "AIzaSyAaPvnFtMPUKEy9TXfy9sw9ollnxm820m8",
   authDomain: "smartcity-f2401.firebaseapp.com",
@@ -42,56 +62,74 @@
 };
 
 
-    // Init Firebase
-    const app = initializeApp(firebaseConfig);
-    const db = getFirestore(app);
+    // ==========
+    // Debug UI
+    // ==========
+    const debugBox = document.getElementById("debug");
+    function showDebug(msg) {
+      debugBox.style.display = "block";
+      debugBox.textContent = msg;
+      console.log(msg);
+    }
 
-    // ✅ Init Leaflet map (centre Tunis)
-    const map = L.map('map').setView([36.8065, 10.1815], 11);
+    // ==========
+    // Map init
+    // ==========
+    const map = L.map("map").setView([36.8065, 10.1815], 11);
 
-    // Tiles OSM (gratuit)
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
       maxZoom: 19,
-      attribution: '&copy; OpenStreetMap'
+      attribution: "&copy; OpenStreetMap"
     }).addTo(map);
 
-    // Groupe de markers pour nettoyer/rafraîchir
     const markersLayer = L.layerGroup().addTo(map);
+
+    // ✅ test marker (si tu veux vérifier que la page se charge)
+    // L.circleMarker([36.8065, 10.1815], {radius: 8, color:"#1E88E5", fillColor:"#1E88E5", fillOpacity:0.9, weight:2})
+    //   .addTo(map).bindPopup("TEST TUNIS");
+
+    function toNumber(v) {
+      // accepte 36.8 ou "36,8"
+      const s = String(v ?? "").trim().replace(",", ".");
+      const n = parseFloat(s);
+      return Number.isFinite(n) ? n : null;
+    }
 
     function formatDate(ts) {
       try {
-        // Firestore Timestamp -> Date
         const d = ts?.toDate ? ts.toDate() : (ts instanceof Date ? ts : null);
         if (!d) return "";
-        const dd = String(d.getDate()).padStart(2, '0');
-        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const dd = String(d.getDate()).padStart(2, "0");
+        const mm = String(d.getMonth() + 1).padStart(2, "0");
         const yyyy = d.getFullYear();
         return `${dd}/${mm}/${yyyy}`;
-      } catch { return ""; }
+      } catch {
+        return "";
+      }
     }
 
-    function statusBadge(status, isResolved) {
-      const resolved = (isResolved === true) || (String(status).toLowerCase().includes("résolu"));
+    function badgeHtml(status, isResolved) {
+      const st = String(status ?? "").toLowerCase();
+      const resolved = isResolved === true || st.includes("résolu") || st.includes("resolu");
       if (resolved) return `<span class="badge badge-green">Résolu</span>`;
       return `<span class="badge badge-red">Non résolu</span>`;
     }
 
-    function addSignalementMarker(docId, data) {
-      const lat = Number(data.latitude);
-      const lng = Number(data.longitude);
+    function addMarker(docId, data) {
+      // lire coords
+      let lat = toNumber(data.latitude);
+      let lng = toNumber(data.longitude);
 
-      // Ignore coords invalides
-      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+      // ⚠️ Si tu suspectes inversion, décommente cette ligne
+      // [lat, lng] = [lng, lat];
+
+      // ignore invalides
+      if (lat === null || lng === null) return;
+      if (lat === 0 || lng === 0) return;
       if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return;
 
-      // ✅ Boule bleue (circleMarker)
-      const m = L.circleMarker([lat, lng], {
-        radius: 8,
-        color: "#1E88E5",
-        fillColor: "#1E88E5",
-        fillOpacity: 0.9,
-        weight: 2
-      });
+      // optionnel: limiter à zone Tunisie (évite points “mer”)
+      // if (lat < 30 || lat > 38 || lng < 6 || lng > 12) return;
 
       const title = data.title ?? "Sans titre";
       const status = data.status ?? "";
@@ -102,30 +140,67 @@
       const popupHtml = `
         <div>
           <div class="popup-title">${title}</div>
-          <div>${statusBadge(status, data.isResolved)}</div>
+          ${badgeHtml(status, data.isResolved)}
           <div class="meta">
             ${category ? `Catégorie: <b>${category}</b><br>` : ""}
             ${community ? `Communauté: <b>${community}</b><br>` : ""}
-            ${dateStr ? `Date: <b>${dateStr}</b>` : ""}
+            ${dateStr ? `Date: <b>${dateStr}</b><br>` : ""}
+            <span style="color:#666;">lat=${lat}, lng=${lng}</span>
           </div>
         </div>
       `;
 
+      // ✅ Boule bleue
+      const m = L.circleMarker([lat, lng], {
+        radius: 8,
+        color: "#1E88E5",
+        fillColor: "#1E88E5",
+        fillOpacity: 0.9,
+        weight: 2
+      });
+
       m.bindPopup(popupHtml);
       m.addTo(markersLayer);
+
+      return [lat, lng];
     }
 
     async function loadSignalements() {
       markersLayer.clearLayers();
 
-      // ✅ 2) Récupérer Firestore
-      const q = query(collection(db, "signalements"), orderBy("createdAt", "desc"));
-      const snap = await getDocs(q);
+      try {
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
 
-      snap.forEach((doc) => addSignalementMarker(doc.id, doc.data()));
+        showDebug("Chargement Firestore: collection 'signalements'...");
+
+        const snap = await getDocs(collection(db, "signalements"));
+        showDebug(`Docs trouvés: ${snap.size}\n(Si 0: règles Firestore ou collection vide)`);
+
+        let points = [];
+        snap.forEach((doc) => {
+          const p = addMarker(doc.id, doc.data());
+          if (p) points.push(p);
+        });
+
+        showDebug(`Markers ajoutés: ${points.length}\n(Clique un point pour voir le popup)`);
+
+        // Auto-fit si on a des points
+        if (points.length > 0) {
+          const bounds = L.latLngBounds(points);
+          map.fitBounds(bounds.pad(0.2));
+        }
+
+      } catch (e) {
+        console.error(e);
+        showDebug(
+          "❌ ERREUR Firestore:\n" +
+          (e?.message || e) +
+          "\n\n✅ Vérifie les RULES Firestore (allow read) et la config firebaseConfig."
+        );
+      }
     }
 
-    // Lancer au chargement
     loadSignalements();
   </script>
 </body>
