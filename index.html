@@ -3,41 +3,54 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Carte Signalements</title>
+  <title>Carte des signalements</title>
 
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <!-- Leaflet -->
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+  />
 
   <style>
-    html, body, #map { height: 100%; margin: 0; }
-
-    #debug {
-      position: absolute;
-      z-index: 9999;
-      left: 10px;
-      right: 10px;
-      bottom: 10px;
-      max-width: 900px;
-      margin: 0 auto;
-      background: rgba(0,0,0,0.78);
-      color: #fff;
-      padding: 10px 12px;
-      border-radius: 12px;
-      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-      font-size: 12px;
-      line-height: 1.35;
-      white-space: pre-wrap;
+    html, body, #map {
+      height: 100%;
+      margin: 0;
     }
 
-    .popup-title { font-weight: 800; font-size: 16px; margin: 0 0 6px; }
-    .badge { display:inline-block; padding:3px 8px; border-radius:999px; font-size:12px; margin-top:4px; }
-    .badge-red { background:#ffebee; color:#c62828; }
-    .badge-green { background:#e8f5e9; color:#2e7d32; }
-    .meta { font-size: 12px; color: #444; margin-top: 8px; }
+    .popup-title {
+      font-weight: 700;
+      font-size: 16px;
+      margin-bottom: 6px;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      margin-top: 6px;
+    }
+
+    .badge-red {
+      background: #fdecea;
+      color: #c62828;
+    }
+
+    .badge-green {
+      background: #e8f5e9;
+      color: #2e7d32;
+    }
+
+    .meta {
+      font-size: 12px;
+      margin-top: 8px;
+      color: #444;
+    }
   </style>
 </head>
+
 <body>
   <div id="map"></div>
-  <div id="debug">Chargement...</div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
@@ -45,10 +58,8 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
     import { getFirestore, collection, getDocs } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
 
-    // ==============================
-    // ✅ REMPLACE PAR TON firebaseConfig
-    // ==============================
-   const firebaseConfig = {
+    // 🔴 REMPLACE CE BLOC PAR TON firebaseConfig
+    const firebaseConfig = {
   apiKey: "AIzaSyAaPvnFtMPUKEy9TXfy9sw9ollnxm820m8",
   authDomain: "smartcity-f2401.firebaseapp.com",
   projectId: "smartcity-f2401",
@@ -58,16 +69,9 @@
 };
 
 
-    const debugBox = document.getElementById("debug");
-    const logs = [];
-    function log(msg) {
-      logs.push(msg);
-      debugBox.textContent = logs.slice(-12).join("\n");
-      console.log(msg);
-    }
-
-    // Map init (Tunis)
+    // ================= MAP =================
     const map = L.map("map").setView([36.8065, 10.1815], 11);
+
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
       maxZoom: 19,
       attribution: "&copy; OpenStreetMap"
@@ -75,162 +79,107 @@
 
     const markersLayer = L.layerGroup().addTo(map);
 
+    // ================= HELPERS =================
     function toNumber(v) {
-      const s = String(v ?? "").trim().replace(",", ".");
-      const n = parseFloat(s);
+      const n = parseFloat(String(v ?? "").replace(",", "."));
       return Number.isFinite(n) ? n : null;
     }
 
-    // Tunisia approx: lat 30..38, lng 6..12
     function inTunisia(lat, lng) {
       return lat >= 30 && lat <= 38 && lng >= 6 && lng <= 12;
     }
 
-    function fixLatLngMaybe(lat, lng) {
+    function fixLatLng(lat, lng) {
       if (lat == null || lng == null) return [null, null];
       if (inTunisia(lat, lng)) return [lat, lng];
-      if (inTunisia(lng, lat)) return [lng, lat]; // inversé
+      if (inTunisia(lng, lat)) return [lng, lat];
       return [lat, lng];
     }
 
-    function extractLatLng(data) {
-      // 1) latitude/longitude
+    function getLatLng(data) {
       let lat = toNumber(data.latitude);
       let lng = toNumber(data.longitude);
-      if (lat != null && lng != null) return [lat, lng, "latitude/longitude"];
 
-      // 2) lat/lng
-      lat = toNumber(data.lat);
-      lng = toNumber(data.lng);
-      if (lat != null && lng != null) return [lat, lng, "lat/lng"];
+      if (lat == null || lng == null) {
+        lat = toNumber(data.lat);
+        lng = toNumber(data.lng);
+      }
 
-      // 3) location (GeoPoint)
-      const glat = data.location?.latitude ?? data.location?.lat ?? null;
-      const glng = data.location?.longitude ?? data.location?.lng ?? null;
-      lat = toNumber(glat);
-      lng = toNumber(glng);
-      if (lat != null && lng != null) return [lat, lng, "location(GeoPoint)"];
+      if ((lat == null || lng == null) && data.location) {
+        lat = toNumber(data.location.latitude);
+        lng = toNumber(data.location.longitude);
+      }
 
-      // 4) position (au cas où)
-      const plat = data.position?.latitude ?? data.position?.lat ?? null;
-      const plng = data.position?.longitude ?? data.position?.lng ?? null;
-      lat = toNumber(plat);
-      lng = toNumber(plng);
-      if (lat != null && lng != null) return [lat, lng, "position"];
-
-      return [null, null, "not_found"];
+      return fixLatLng(lat, lng);
     }
 
     function formatDate(ts) {
       try {
-        const d = ts?.toDate ? ts.toDate() : (ts instanceof Date ? ts : null);
+        const d = ts?.toDate ? ts.toDate() : null;
         if (!d) return "";
-        const dd = String(d.getDate()).padStart(2, "0");
-        const mm = String(d.getMonth() + 1).padStart(2, "0");
-        const yyyy = d.getFullYear();
-        return `${dd}/${mm}/${yyyy}`;
-      } catch { return ""; }
+        return d.toLocaleDateString("fr-FR");
+      } catch {
+        return "";
+      }
     }
 
-    function badgeHtml(status, isResolved) {
-      const st = String(status ?? "").toLowerCase();
-      const resolved = isResolved === true || st.includes("résolu") || st.includes("resolu");
+    function badge(status, isResolved) {
+      const resolved =
+        isResolved === true ||
+        String(status).toLowerCase().includes("résolu");
+
       return resolved
         ? `<span class="badge badge-green">Résolu</span>`
         : `<span class="badge badge-red">Non résolu</span>`;
     }
 
-    function addSignalementMarker(docId, data) {
-      let [lat, lng, source] = extractLatLng(data);
-      [lat, lng] = fixLatLngMaybe(lat, lng);
+    // ================= MAIN =================
+    async function loadSignalements() {
+      const app = initializeApp(firebaseConfig);
+      const db = getFirestore(app);
 
-      if (lat == null || lng == null) {
-        log(`⛔ ${docId}: coords introuvables (source=${source})`);
-        return null;
-      }
-      if (lat === 0 || lng === 0) {
-        log(`⛔ ${docId}: coords = 0,0 ignorées`);
-        return null;
-      }
-      if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
-        log(`⛔ ${docId}: coords hors limites lat=${lat} lng=${lng}`);
-        return null;
-      }
+      const snap = await getDocs(collection(db, "signalements"));
 
-      const title = data.title ?? "Sans titre";
-      const status = data.status ?? "";
-      const category = data.category ?? "";
-      const community = data.community ?? "";
-      const dateStr = formatDate(data.createdAt);
+      let bounds = [];
 
-      const popupHtml = `
-        <div>
-          <div class="popup-title">${title}</div>
-          ${badgeHtml(status, data.isResolved)}
-          <div class="meta">
-            ${category ? `Catégorie: <b>${category}</b><br>` : ""}
-            ${community ? `Communauté: <b>${community}</b><br>` : ""}
-            ${dateStr ? `Date: <b>${dateStr}</b><br>` : ""}
-            <span style="color:#666;">(${source}) lat=${lat}, lng=${lng}</span>
+      snap.forEach((doc) => {
+        const data = doc.data();
+        let [lat, lng] = getLatLng(data);
+
+        if (lat == null || lng == null) return;
+        if (lat === 0 || lng === 0) return;
+
+        const popup = `
+          <div>
+            <div class="popup-title">${data.title ?? "Sans titre"}</div>
+            ${badge(data.status, data.isResolved)}
+            <div class="meta">
+              ${data.category ? `Catégorie : <b>${data.category}</b><br>` : ""}
+              ${data.community ? `Communauté : <b>${data.community}</b><br>` : ""}
+              ${data.createdAt ? `Date : <b>${formatDate(data.createdAt)}</b>` : ""}
+            </div>
           </div>
-        </div>
-      `;
+        `;
 
-      const m = L.circleMarker([lat, lng], {
-        radius: 8,
-        color: "#1E88E5",
-        fillColor: "#1E88E5",
-        fillOpacity: 0.9,
-        weight: 2
+        L.circleMarker([lat, lng], {
+          radius: 8,
+          color: "#1E88E5",
+          fillColor: "#1E88E5",
+          fillOpacity: 0.9,
+          weight: 2
+        })
+          .addTo(markersLayer)
+          .bindPopup(popup);
+
+        bounds.push([lat, lng]);
       });
 
-      m.bindPopup(popupHtml);
-      m.addTo(markersLayer);
-
-      return [lat, lng];
-    }
-
-    async function main() {
-      markersLayer.clearLayers();
-      logs.length = 0;
-
-      try {
-        log("⏳ Init Firebase...");
-        const app = initializeApp(firebaseConfig);
-        const db = getFirestore(app);
-
-        log("⏳ Lecture Firestore: signalements...");
-        const snap = await getDocs(collection(db, "signalements"));
-
-        log(`✅ Docs trouvés: ${snap.size}`);
-
-        let points = [];
-        let added = 0;
-
-        snap.forEach((doc) => {
-          const p = addSignalementMarker(doc.id, doc.data());
-          if (p) { points.push(p); added++; }
-        });
-
-        log(`✅ Markers ajoutés: ${added}`);
-
-        if (added === 0 && snap.size > 0) {
-          log("⚠️ Aucun marker: champs coords manquants ou mauvais noms (lat/lng/location).");
-        }
-
-        if (points.length > 0) {
-          map.fitBounds(L.latLngBounds(points).pad(0.2));
-        }
-
-      } catch (e) {
-        console.error(e);
-        log("❌ Erreur Firestore:");
-        log(String(e?.message || e));
-        log("✅ Fix: Firestore Rules allow read + firebaseConfig correct.");
+      if (bounds.length > 0) {
+        map.fitBounds(bounds, { padding: [40, 40] });
       }
     }
 
-    main();
+    loadSignalements();
   </script>
 </body>
 </html>
