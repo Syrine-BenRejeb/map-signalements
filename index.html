@@ -6,10 +6,7 @@
   <title>Carte des signalements</title>
 
   <!-- Leaflet -->
-  <link
-    rel="stylesheet"
-    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-  />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 
   <style>
     html, body, #map {
@@ -21,24 +18,6 @@
       font-weight: 700;
       font-size: 16px;
       margin-bottom: 6px;
-    }
-
-    .badge {
-      display: inline-block;
-      padding: 4px 10px;
-      border-radius: 999px;
-      font-size: 12px;
-      margin-top: 6px;
-    }
-
-    .badge-red {
-      background: #fdecea;
-      color: #c62828;
-    }
-
-    .badge-green {
-      background: #e8f5e9;
-      color: #2e7d32;
     }
 
     .meta {
@@ -58,7 +37,7 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
     import { getFirestore, collection, getDocs } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
 
-    // 🔴 REMPLACE CE BLOC PAR TON firebaseConfig
+    // 🔴 REMPLACE PAR TON firebaseConfig
     const firebaseConfig = {
   apiKey: "AIzaSyAaPvnFtMPUKEy9TXfy9sw9ollnxm820m8",
   authDomain: "smartcity-f2401.firebaseapp.com",
@@ -123,16 +102,6 @@
       }
     }
 
-    function badge(status, isResolved) {
-      const resolved =
-        isResolved === true ||
-        String(status).toLowerCase().includes("résolu");
-
-      return resolved
-        ? `<span class="badge badge-green">Résolu</span>`
-        : `<span class="badge badge-red">Non résolu</span>`;
-    }
-
     // ================= MAIN =================
     async function loadSignalements() {
       const app = initializeApp(firebaseConfig);
@@ -152,8 +121,12 @@
         const popup = `
           <div>
             <div class="popup-title">${data.title ?? "Sans titre"}</div>
-            ${badge(data.status, data.isResolved)}
             <div class="meta">
+              ${
+                data.status && data.status !== "Résolu"
+                  ? `Statut : <b>${data.status}</b><br>`
+                  : ""
+              }
               ${data.category ? `Catégorie : <b>${data.category}</b><br>` : ""}
               ${data.community ? `Communauté : <b>${data.community}</b><br>` : ""}
               ${data.createdAt ? `Date : <b>${formatDate(data.createdAt)}</b>` : ""}
