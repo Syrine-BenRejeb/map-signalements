@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Carte des signalements</title>
+  <title>Carte Signalements</title>
 
   <!-- Leaflet -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
@@ -11,26 +11,24 @@
   <style>
     html, body, #map { height: 100%; margin: 0; }
 
-    /* petit bandeau debug */
+    /* Bandeau debug */
     #debug {
       position: absolute;
       z-index: 9999;
       left: 10px;
-      bottom: 10px;
       right: 10px;
-      max-width: 520px;
-      background: rgba(0,0,0,0.70);
+      bottom: 10px;
+      max-width: 700px;
+      margin: 0 auto;
+      background: rgba(0,0,0,0.75);
       color: #fff;
       padding: 10px 12px;
       border-radius: 12px;
       font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
       font-size: 12px;
       line-height: 1.35;
-      display: none;
       white-space: pre-wrap;
     }
-    #debug strong { color: #ffd54f; }
-
     .popup-title { font-weight: 800; font-size: 16px; margin: 0 0 6px; }
     .badge { display:inline-block; padding:3px 8px; border-radius:999px; font-size:12px; margin-top:4px; }
     .badge-red { background:#ffebee; color:#c62828; }
@@ -40,19 +38,20 @@
 </head>
 <body>
   <div id="map"></div>
-  <div id="debug"></div>
+  <div id="debug">Chargement...</div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
-  <!-- Firebase v9 -->
+  <!-- Firebase (Web SDK v9) -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
     import { getFirestore, collection, getDocs } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
 
-    // ============================
-    // ✅ 1) REMPLACE firebaseConfig
-    // ============================
-    const firebaseConfig = {
+    // ==================================================
+    // ✅ REMPLACE CE BLOC PAR TON firebaseConfig
+    // Firebase Console → Project Settings → Your apps → Web
+    // ==================================================
+   const firebaseConfig = {
   apiKey: "AIzaSyAaPvnFtMPUKEy9TXfy9sw9ollnxm820m8",
   authDomain: "smartcity-f2401.firebaseapp.com",
   projectId: "smartcity-f2401",
@@ -62,12 +61,8 @@
 };
 
 
-    // ==========
-    // Debug UI
-    // ==========
     const debugBox = document.getElementById("debug");
-    function showDebug(msg) {
-      debugBox.style.display = "block";
+    function setDebug(msg) {
       debugBox.textContent = msg;
       console.log(msg);
     }
@@ -76,7 +71,6 @@
     // Map init
     // ==========
     const map = L.map("map").setView([36.8065, 10.1815], 11);
-
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
       maxZoom: 19,
       attribution: "&copy; OpenStreetMap"
@@ -84,9 +78,8 @@
 
     const markersLayer = L.layerGroup().addTo(map);
 
-    // ✅ test marker (si tu veux vérifier que la page se charge)
-    // L.circleMarker([36.8065, 10.1815], {radius: 8, color:"#1E88E5", fillColor:"#1E88E5", fillOpacity:0.9, weight:2})
-    //   .addTo(map).bindPopup("TEST TUNIS");
+    // Petit marker test (si tu veux vérifier que ça charge)
+    // L.circleMarker([36.8065, 10.1815], {radius:8, color:"#1E88E5", fillColor:"#1E88E5", fillOpacity:0.9}).addTo(map).bindPopup("TEST TUNIS");
 
     function toNumber(v) {
       // accepte 36.8 ou "36,8"
@@ -103,33 +96,44 @@
         const mm = String(d.getMonth() + 1).padStart(2, "0");
         const yyyy = d.getFullYear();
         return `${dd}/${mm}/${yyyy}`;
-      } catch {
-        return "";
-      }
+      } catch { return ""; }
     }
 
     function badgeHtml(status, isResolved) {
       const st = String(status ?? "").toLowerCase();
       const resolved = isResolved === true || st.includes("résolu") || st.includes("resolu");
-      if (resolved) return `<span class="badge badge-green">Résolu</span>`;
-      return `<span class="badge badge-red">Non résolu</span>`;
+      return resolved
+        ? `<span class="badge badge-green">Résolu</span>`
+        : `<span class="badge badge-red">Non résolu</span>`;
     }
 
-    function addMarker(docId, data) {
-      // lire coords
+    // Détecte inversion lat/lng :
+    // - Tunisia approx: lat 30..38, lng 6..12
+    function fixLatLngMaybe(lat, lng) {
+      const inTunisia = (a,b) => a >= 30 && a <= 38 && b >= 6 && b <= 12;
+
+      if (lat == null || lng == null) return [null, null];
+
+      // Si déjà correct
+      if (inTunisia(lat, lng)) return [lat, lng];
+
+      // Si inversé
+      if (inTunisia(lng, lat)) return [lng, lat];
+
+      // Sinon garde tel quel (monde)
+      return [lat, lng];
+    }
+
+    function addSignalementMarker(docId, data) {
       let lat = toNumber(data.latitude);
       let lng = toNumber(data.longitude);
 
-      // ⚠️ Si tu suspectes inversion, décommente cette ligne
-      // [lat, lng] = [lng, lat];
+      [lat, lng] = fixLatLngMaybe(lat, lng);
 
       // ignore invalides
-      if (lat === null || lng === null) return;
-      if (lat === 0 || lng === 0) return;
-      if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return;
-
-      // optionnel: limiter à zone Tunisie (évite points “mer”)
-      // if (lat < 30 || lat > 38 || lng < 6 || lng > 12) return;
+      if (lat === null || lng === null) return null;
+      if (lat === 0 || lng === 0) return null;
+      if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
 
       const title = data.title ?? "Sans titre";
       const status = data.status ?? "";
@@ -150,7 +154,6 @@
         </div>
       `;
 
-      // ✅ Boule bleue
       const m = L.circleMarker([lat, lng], {
         radius: 8,
         color: "#1E88E5",
@@ -165,43 +168,59 @@
       return [lat, lng];
     }
 
-    async function loadSignalements() {
+    async function main() {
       markersLayer.clearLayers();
 
       try {
+        setDebug("1) Initialisation Firebase...\n");
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
 
-        showDebug("Chargement Firestore: collection 'signalements'...");
-
+        setDebug("2) Lecture Firestore: collection 'signalements'...\n");
         const snap = await getDocs(collection(db, "signalements"));
-        showDebug(`Docs trouvés: ${snap.size}\n(Si 0: règles Firestore ou collection vide)`);
+
+        setDebug(
+          "✅ Firestore OK\n" +
+          `Docs trouvés: ${snap.size}\n` +
+          "Ajout des markers...\n"
+        );
 
         let points = [];
+        let added = 0;
+
         snap.forEach((doc) => {
-          const p = addMarker(doc.id, doc.data());
-          if (p) points.push(p);
+          const p = addSignalementMarker(doc.id, doc.data());
+          if (p) { points.push(p); added++; }
         });
 
-        showDebug(`Markers ajoutés: ${points.length}\n(Clique un point pour voir le popup)`);
+        setDebug(
+          "✅ Terminé\n" +
+          `Docs trouvés: ${snap.size}\n` +
+          `Markers ajoutés: ${added}\n\n` +
+          "Si 0 marker:\n" +
+          "- latitude/longitude vides\n" +
+          "- règles Firestore (read)\n" +
+          "- mauvais firebaseConfig"
+        );
 
-        // Auto-fit si on a des points
         if (points.length > 0) {
-          const bounds = L.latLngBounds(points);
-          map.fitBounds(bounds.pad(0.2));
+          map.fitBounds(L.latLngBounds(points).pad(0.2));
         }
 
       } catch (e) {
         console.error(e);
-        showDebug(
-          "❌ ERREUR Firestore:\n" +
+        setDebug(
+          "❌ ERREUR\n" +
           (e?.message || e) +
-          "\n\n✅ Vérifie les RULES Firestore (allow read) et la config firebaseConfig."
+          "\n\nFix rapides:\n" +
+          "A) Firestore Rules: allow read\n" +
+          "B) Vérifie firebaseConfig\n" +
+          "C) Vérifie collection 'signalements'\n"
         );
       }
     }
 
-    loadSignalements();
+    main();
   </script>
 </body>
 </html>
